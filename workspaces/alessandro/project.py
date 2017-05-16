@@ -8,7 +8,7 @@ Created on Sat May 13 12:04:07 2017
 random_state = 666
 
 import pandas as pd
-dataset = pd.read_csv("..\common\dataset.csv")
+dataset = pd.read_csv("../common/dataset.csv")
 
 fields = {'SEX', 'EDUCATION', 'MARRIAGE', 'PAY_DEC', 'PAY_NOV', 'PAY_OCT', 'PAY_SEP', 'PAY_AUG', 'PAY_JUL'}
 for field in fields:
@@ -61,10 +61,12 @@ dataset['AGE'] = dataset['AGE'].fillna(dataset['AGE'].mean())
 
 from sklearn import preprocessing
 
-fields = {'LIMIT_BAL', 'BILL_AMT_DEC', 'BILL_AMT_NOV', 'BILL_AMT_OCT', 'BILL_AMT_SEP', 'BILL_AMT_AUG', 'BILL_AMT_JUL', 'PAY_AMT_DEC', 'PAY_AMT_NOV', 'PAY_AMT_OCT', 'PAY_AMT_SEP', 'PAY_AMT_AUG', 'PAY_AMT_JUL', 'AGE'}
-for field in fields:
-    dataset[field] = preprocessing.scale(dataset[field])
+fields = ['LIMIT_BAL', 'BILL_AMT_DEC', 'BILL_AMT_NOV', 'BILL_AMT_OCT', 'BILL_AMT_SEP', 'BILL_AMT_AUG', 'BILL_AMT_JUL', 'PAY_AMT_DEC', 'PAY_AMT_NOV', 'PAY_AMT_OCT', 'PAY_AMT_SEP', 'PAY_AMT_AUG', 'PAY_AMT_JUL']
 
+#for field in fields:
+dataset[fields] = preprocessing.scale(dataset[fields])
+dataset['AGE'] = preprocessing.scale(dataset['AGE'])
+    
 dataset = dataset.drop(['CUST_COD'], 1)
 
 #%%
@@ -100,7 +102,7 @@ plt.ylabel('Cumsum')
 plt.title('PCA Cumsum')
 plt.legend(loc='best')
 plt.show()
-cumsum_tresh = 0.95
+cumsum_tresh = 0.90
 for i in np.arange(0,len(cumsum)):
     if cumsum[i] >= cumsum_tresh:
         break
@@ -110,6 +112,20 @@ pca = PCA(n_components=n_components)
 pca.fit(train_features)
 X = pca.transform(train_features)
 X_test = pca.transform(test_features)
+
+pca = PCA(n_components=2)
+
+colors = {0:'r', 1:'b'}
+
+df = pd.DataFrame(pca.fit_transform(test_features))
+
+fig, ax = plt.subplots()
+
+df1 = pd.DataFrame(y)
+
+ax.scatter(df[0], df[1], c=df1[0].apply(lambda x: colors[x]), s=1)
+
+plt.show()
 
 #%%
 from sklearn.model_selection import StratifiedKFold
@@ -143,7 +159,7 @@ test_clf(X, y, clf.predict(X), X_test, y_test, clf.predict(X_test))
 
 #%%
 from sklearn import tree
-clf = tree.DecisionTreeClassifier(random_state=random_state)
+clf = tree.DecisionTreeClassifier(random_state=random_state, max_depth=7)
 clf.fit(X, y)
 test_clf(X, y, clf.predict(X), X_test, y_test, clf.predict(X_test))
 
@@ -156,24 +172,28 @@ def cost_matrix(y, y_pred):
     cm = confusion_matrix(y, y_pred)
     # first index true
     # second index predicted
-    return (cm[0][0] * 0 + cm[0][1] * 1)*0.5/0.8 + (cm[1][0] * 1 + cm[1][1] * 0)*0.5/0.2
+    return (cm[0][0] * 0 + cm[0][1] * 1) + (cm[1][0] * 7 + cm[1][1] * 0)
 ms = make_scorer(cost_matrix, greater_is_better=False)
 
 # parameters = {'C':[0.001, 0.01, 0.1, 1, 10, 100, 1000, 10000]}
 # {'C': 100}
 cv=StratifiedKFold(n_splits=3, random_state=random_state, shuffle=True)
-parameters = {'C': [1e-10, 1e-9, 1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1, 10, 100, 1000, 10e4, 10e5, 10e6, 10e7]}
-#parameters = {'class_weight' : {0:5/8, 1:5/2}}
-#parameters = {'C' : np.arange(1, 150, step=1)} 
-            # 'fit_intercept': [True, False],
-             # 'penalty': ['l1', 'l2']}
-#parameters = {'C': [1e-1, 1, 10]}
-clf = LogisticRegression(penalty='l1', C=1e10,  fit_intercept=True, random_state=random_state, verbose=0, n_jobs=1)
-gscv = GridSearchCV(estimator=clf, param_grid=parameters, n_jobs=-1, cv=cv, scoring='roc_auc')
+
+parameters = {'C': [1e-4, 1e-3, 1e-2, 1e-1, 1, 10, 100, 1000, 10e4]}
+#clf = LogisticRegression(penalty='l2', C=1e10,  class_weight='balanced', fit_intercept=True, random_state=random_state, verbose=0, n_jobs=1)
+
+#parameters = {'max_depth':np.arange(1,20)}
+#clf = tree.DecisionTreeClassifier(random_state=random_state)
+
+#parameters = {'max_depth':np.arange(1,20)}
+clf = svm.SVC(random_state=random_state, verbose=2)
+
+gscv = GridSearchCV(estimator=clf, param_grid=parameters, n_jobs=-1, cv=cv, scoring='f1')
 gscv.fit(X, y)
 plt.figure(1)
 #plt.plot(parameters['C'], gscv.cv_results_['mean_test_score'], label='Score')
 plt.semilogx(parameters['C'], gscv.cv_results_['mean_test_score'], label='Score')
+#plt.plot(parameters['max_depth'], gscv.cv_results_['mean_test_score'], label='Score')
 plt.xlabel('C')
 plt.ylabel('Score')
 plt.title('CV Score')
@@ -183,9 +203,32 @@ print(gscv.best_params_)
 
 #%%
 from sklearn.linear_model import LogisticRegression
-clf = LogisticRegression(penalty='l1', C=1, class_weight=None, fit_intercept=True, random_state=random_state, verbose=2, n_jobs=-1)
+clf = LogisticRegression(penalty='l2', C=0.1, class_weight='balanced', fit_intercept=True, random_state=random_state, verbose=2, n_jobs=-1)
 clf.fit(X, y)
 test_clf(X, y, clf.predict(X), X_test, y_test, clf.predict(X_test))
+
+from sklearn.metrics import roc_curve, auc
+
+y_score = clf.fit(X, y).decision_function(X_test)
+
+# Compute ROC curve and ROC area for each class
+fpr, tpr, t = roc_curve(y_test, y_score)
+roc_auc = auc(fpr, tpr)
+
+t_sigm = 1 / (1 + np.exp(-t))
+
+plt.figure()
+lw = 2
+plt.plot(fpr, tpr, color='darkorange',
+         lw=lw, label='ROC curve (area = %0.2f)' % roc_auc)
+plt.plot([0, 1], [0, 1], color='navy', lw=lw, linestyle='--')
+plt.xlim([0.0, 1.0])
+plt.ylim([0.0, 1.05])
+plt.xlabel('False Positive Rate')
+plt.ylabel('True Positive Rate')
+plt.title('Receiver operating characteristic example')
+plt.legend(loc="lower right")
+plt.show()
 
 #%%
 # clf = clf.fit(train_features, train_target)
