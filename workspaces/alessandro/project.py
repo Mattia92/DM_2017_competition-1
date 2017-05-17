@@ -18,34 +18,6 @@ for field in fields:
 # set(dataset["EDUCATION"]) = {nan, 'high school', 'graduate school', 'other', 'university'}
 # set(dataset["MARRIAGE"]) = {nan, 'other', 'single', 'married'}
 
-# def edu_to_val(edu):
-#    if edu == None:
-#        return 0
-#    elif edu == "other":
-#        return 1
-#    elif edu == "high school":
-#        return 2
-#    elif edu == "graduate school":
-#        return 3
-#    elif edu == "university":
-#        return 4
-#    else:
-#        return 0
-#dataset['EDUCATION'] = dataset['EDUCATION'].apply(lambda x: edu_to_val(x))
-
-#def marriage_to_val(marriage):
-#    if marriage == None:
-#        return 0
-#    elif marriage == "other":
-#        return 1
-#    elif marriage == "single":
-#        return 2
-#    elif marriage == "married":
-#        return 3
-#    else:
-#        return 0
-#dataset["MARRIAGE"] = dataset["MARRIAGE"].apply(lambda x: marriage_to_val(x))
-
 dataset['BIRTH_DATE'] = pd.to_datetime(dataset['BIRTH_DATE'], format='%d/%m/%Y')
 from datetime import date
 def calculate_age(birth_date):
@@ -59,19 +31,17 @@ dataset['AGE'] = dataset['BIRTH_DATE'].apply(lambda x: calculate_age(x))
 dataset = dataset.drop(["BIRTH_DATE"], 1)
 dataset['AGE'] = dataset['AGE'].fillna(dataset['AGE'].mean())
 
-from sklearn import preprocessing
-
-fields = ['LIMIT_BAL', 'BILL_AMT_DEC', 'BILL_AMT_NOV', 'BILL_AMT_OCT', 'BILL_AMT_SEP', 'BILL_AMT_AUG', 'BILL_AMT_JUL', 'PAY_AMT_DEC', 'PAY_AMT_NOV', 'PAY_AMT_OCT', 'PAY_AMT_SEP', 'PAY_AMT_AUG', 'PAY_AMT_JUL']
-
-#for field in fields:
-dataset[fields] = preprocessing.scale(dataset[fields])
-dataset['AGE'] = preprocessing.scale(dataset['AGE'])
+fields = ['LIMIT_BAL',
+          'BILL_AMT_DEC', 'BILL_AMT_NOV', 'BILL_AMT_OCT', 'BILL_AMT_SEP', 'BILL_AMT_AUG', 'BILL_AMT_JUL',
+          'PAY_AMT_DEC', 'PAY_AMT_NOV', 'PAY_AMT_OCT', 'PAY_AMT_SEP', 'PAY_AMT_AUG', 'PAY_AMT_JUL']
+from sklearn.preprocessing import RobustScaler
+rs = RobustScaler()
+rs.fit(dataset[fields])
+dataset[fields] = rs.transform(dataset[fields])
+rs.fit(dataset['AGE'])
+dataset['AGE'] = rs.transform(dataset['AGE'])
     
 dataset = dataset.drop(['CUST_COD'], 1)
-
-#%%
-# from sklearn.manifold import TSNE
-# X_tsne = TSNE(learning_rate=100, n_iter=200, verbose=2).fit_transform(dataset)
 
 #%%
 target_col_name = "DEFAULT PAYMENT JAN"
@@ -87,7 +57,7 @@ y_test = test[target_col_name].tolist()
 
 #%%
 from sklearn.decomposition import PCA
-pca = PCA()
+pca = PCA(whiten=True)
 pca.fit(train_features)
 cumsum = pca.explained_variance_ratio_.cumsum()
 
@@ -102,48 +72,49 @@ plt.ylabel('Cumsum')
 plt.title('PCA Cumsum')
 plt.legend(loc='best')
 plt.show()
-cumsum_tresh = 0.90
+cumsum_tresh = 0.99
 for i in np.arange(0,len(cumsum)):
     if cumsum[i] >= cumsum_tresh:
         break
 n_components = i
 print('cumsum_tresh = {}, n_components = {}'.format(cumsum_tresh, n_components))
-pca = PCA(n_components=n_components)
+pca = PCA(whiten=True, n_components=n_components)
 pca.fit(train_features)
 X = pca.transform(train_features)
 X_test = pca.transform(test_features)
 
-pca = PCA(n_components=2)
-
+pca = PCA(whiten=True, n_components=2)
 colors = {0:'r', 1:'b'}
-
 df = pd.DataFrame(pca.fit_transform(test_features))
-
 fig, ax = plt.subplots()
-
-df1 = pd.DataFrame(y)
-
-ax.scatter(df[0], df[1], c=df1[0].apply(lambda x: colors[x]), s=1)
-
+ax.scatter(df[0], df[1], c=pd.DataFrame(y)[0].apply(lambda x: colors[x]), s=1)
 plt.show()
 
 #%%
 from sklearn.model_selection import StratifiedKFold
 cv=StratifiedKFold(n_splits=10, random_state=random_state, shuffle=True)
+from sklearn.metrics import make_scorer, confusion_matrix
+
+def cost_matrix(y, y_pred):
+    cm = confusion_matrix(y, y_pred)
+    # first index true
+    # second index predicted
+    return cm[0][0] * 0 + cm[0][1] * 1 + cm[1][0] * 7 + cm[1][1] * 0
+ms = make_scorer(cost_matrix, greater_is_better=False)
 
 #%%
 def test_clf(X, y, y_pred, X_test, y_test, y_pred_test):
     from sklearn.metrics import f1_score
     f1_train = f1_score(y, y_pred, average='macro')  
     f1_test = f1_score(y_test, y_pred_test, average='macro')
-    print('f1_train = \n\t{}\nf1_test = \n\t{}'.format(f1_train, f1_test))
+    print('f1_train = {}, f1_test = {}'.format(f1_train, f1_test))
+    cost_train = cost_matrix(y, y_pred)
+    cost_test = cost_matrix(y_test, y_pred_test)
+    print('cost_train = {}, cost_test = {}'.format(format(cost_train, ','), format(cost_test, ',')))
     from sklearn.metrics import confusion_matrix
     cm_train = confusion_matrix(y, y_pred)
     cm_test = confusion_matrix(y_test, y_pred_test)
     print('cm_train = \n{}\ncm_test = \n{}'.format(cm_train, cm_test))
-    cost_train = cost_matrix(y, y_pred)
-    cost_test = cost_matrix(y_test, y_pred_test)
-    print('cost_train = \n{}\ncost_test = \n{}'.format(format(cost_train, ','), format(cost_test, ',')))
     
 #%%
 from sklearn.dummy import DummyClassifier
@@ -159,51 +130,42 @@ test_clf(X, y, clf.predict(X), X_test, y_test, clf.predict(X_test))
 
 #%%
 from sklearn import tree
-clf = tree.DecisionTreeClassifier(random_state=random_state, max_depth=7)
+clf = tree.DecisionTreeClassifier(random_state=random_state)
 clf.fit(X, y)
 test_clf(X, y, clf.predict(X), X_test, y_test, clf.predict(X_test))
 
 #%%
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import GridSearchCV
-from sklearn.metrics import make_scorer, confusion_matrix
-
-def cost_matrix(y, y_pred):
-    cm = confusion_matrix(y, y_pred)
-    # first index true
-    # second index predicted
-    return (cm[0][0] * 0 + cm[0][1] * 1) + (cm[1][0] * 7 + cm[1][1] * 0)
-ms = make_scorer(cost_matrix, greater_is_better=False)
-
-# parameters = {'C':[0.001, 0.01, 0.1, 1, 10, 100, 1000, 10000]}
-# {'C': 100}
 cv=StratifiedKFold(n_splits=3, random_state=random_state, shuffle=True)
 
-parameters = {'C': [1e-4, 1e-3, 1e-2, 1e-1, 1, 10, 100, 1000, 10e4]}
-#clf = LogisticRegression(penalty='l2', C=1e10,  class_weight='balanced', fit_intercept=True, random_state=random_state, verbose=0, n_jobs=1)
+parameters = {'C': [1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1,
+                    1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8]}
+clf = LogisticRegression(penalty='l2', class_weight='balanced', fit_intercept=True, random_state=random_state, n_jobs=1)
 
 #parameters = {'max_depth':np.arange(1,20)}
 #clf = tree.DecisionTreeClassifier(random_state=random_state)
 
 #parameters = {'max_depth':np.arange(1,20)}
-clf = svm.SVC(random_state=random_state, verbose=2)
-
-gscv = GridSearchCV(estimator=clf, param_grid=parameters, n_jobs=-1, cv=cv, scoring='f1')
+#clf = svm.SVC(random_state=random_state, verbose=2)
+scoring = 'f1'
+gscv = GridSearchCV(estimator=clf, param_grid=parameters, n_jobs=-1, cv=cv, scoring=ms)
 gscv.fit(X, y)
 plt.figure(1)
 #plt.plot(parameters['C'], gscv.cv_results_['mean_test_score'], label='Score')
-plt.semilogx(parameters['C'], gscv.cv_results_['mean_test_score'], label='Score')
-#plt.plot(parameters['max_depth'], gscv.cv_results_['mean_test_score'], label='Score')
+plt.semilogx(parameters['C'], gscv.cv_results_['mean_test_score'], label='f1')
+#plt.plot(parameters['max_depth'], gscv.cv_results_['mean_test_score'], label=scoring)
 plt.xlabel('C')
-plt.ylabel('Score')
-plt.title('CV Score')
+plt.ylabel(scoring)
+plt.title('CV ' + scoring)
 plt.legend(loc='best')
 plt.show()
 print(gscv.best_params_)
 
 #%%
 from sklearn.linear_model import LogisticRegression
-clf = LogisticRegression(penalty='l2', C=0.1, class_weight='balanced', fit_intercept=True, random_state=random_state, verbose=2, n_jobs=-1)
+clf = LogisticRegression(penalty='l2', C=0.001, class_weight='balanced',
+                         fit_intercept=True, random_state=random_state, n_jobs=-1)
 clf.fit(X, y)
 test_clf(X, y, clf.predict(X), X_test, y_test, clf.predict(X_test))
 
