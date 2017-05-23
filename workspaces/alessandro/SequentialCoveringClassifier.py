@@ -10,23 +10,26 @@ class SequentialCoveringClassifier(BaseEstimator, ClassifierMixin):
 		self.demo_param = demo_param
 
 	def print_clause(self, clause):
-		print('Rel. Accuracy: {:.2f}, TP: {}, FP: {}, Col: {} -> ({:.2f}, {:.2f}]'.format(clause[0], clause[1], clause[2], clause[3], clause[4], clause[5]))
+		print('Rel. Accuracy: {:.2f}, TP: {}, FP: {}, Col: {} -> ({:.2f}, {:.2f}]'.format(
+			clause[0], clause[1], clause[2], clause[3], clause[4], clause[5]))
 
-	def find_best_rule(self, X1, y1, k=4, min_coverage=100, acc_imp_tresh=0.01, max_clauses=10, min_accuracy=0.5):
-		y1 = y1.copy()
-		X1 = X1.copy()
+	def find_best_rule(self, X, y, k=4, min_coverage=100,
+		acc_imp_tresh=0.01, max_clauses=5, min_accuracy=0.3):
+		y = pd.Series(y)
+		X = pd.DataFrame(X)
 		rule = []
 		current_clause = 0
-		print('Starting find_best_rule on {} samples, {} positives'.format(y1.count(), y1.sum()))
+		best_clause = (0, 0, 0, 0, 0)
+		print('Starting find_best_rule on {} samples, {} positives'.format(
+			y.count(), y.sum()))
 		while (True):
-			y1_count = y1.count()
-			best_clause = (0, 0, 0, 0, 0)
+			y_count = y.count()
 			rule_found = False
-			for col in X1.columns:
-				X1_col = X1[col]
-				lb = X1_col.min()
-				ub = X1_col.max()
-				print('col = {}, k = {}, lb = {:.2f}, ub = {:.2f}'.format(col, k, lb, ub))
+			for col in X.columns:
+				X_col = X[col]
+				lb = X_col.min()
+				ub = X_col.max()
+				#print('col = {}, k = {}, lb = {:.2f}, ub = {:.2f}'.format(col, k, lb, ub))
 				for i in np.arange(2, k+1):
 					h = (ub - lb) / i
 					# print('h = {:.2f}'.format(h))
@@ -34,28 +37,28 @@ class SequentialCoveringClassifier(BaseEstimator, ClassifierMixin):
 						base = lb + j * h
 						top = base + h
 						# print('base = {:.2f}, top = {:.2f}'.format(base, top))
-						mask = (X1_col > base) & (X1_col <= top)
+						mask = (X_col > base) & (X_col <= top)
 						# X2 = X1_col[mask]
-						y2 = y1[mask]
-						y2_count = y2.count()
-						if (y2_count >= min_coverage):
-							y2_sum = y2.sum()
-							acc = y2_sum / y2_count
-							if ((current_clause == 0 or (current_clause >= 1 and acc > rule[current_clause - 1][0] + acc_imp_tresh)) and
-									acc > min_accuracy and
-									acc > best_clause[0]):
+						y_masked = y[mask]
+						y_masked_count = y_masked.count()
+						if (y_masked_count >= min_coverage):
+							y_masked_sum = y_masked.sum()
+							acc = y_masked_sum / y_masked_count
+							if (acc > best_clause[0] + acc_imp_tresh):
 								rule_found = True
-								best_clause = (acc, y2_sum, y2_count - y2_sum, col, base, top)
-								print('New best clause found!')
-								self.print_clause(best_clause)
+								best_clause = (acc, y_masked_sum, y_masked_count - y_masked_sum, col, base, top)
+								#print('New best clause found!')
+								#self.print_clause(best_clause)
 			if (not rule_found):
+				break
+			if (best_clause[0] < min_accuracy):
 				break
 			# Add clause to rule
 			rule.append(best_clause)
 			# Compute mask to remove positive samples covered by the added clause
-			mask = self.mask(best_clause, X1)
-			X1 = X1[mask]
-			y1 = y1[mask]
+			mask = self.mask(best_clause, X)
+			X = X[mask]
+			y = y[mask]
 			# Add 1 to the clause counter
 			current_clause += 1
 			# Exit if clause counter too high
@@ -66,16 +69,15 @@ class SequentialCoveringClassifier(BaseEstimator, ClassifierMixin):
 			self.print_clause(clause)
 		return rule
 
-	def mask(self, clause, X1):
-		return (X1[clause[3]] > clause[4]) & (X1[clause[3]] <= clause[5])
+	def mask(self, clause, X):
+		return (X[clause[3]] > clause[4]) & (X[clause[3]] <= clause[5])
 
-	def cover(self, rule, X1):
-		covered = pd.DataFrame(index=X1.index)
-		covered['coverage'] = True
+	def cover(self, rule, X):
+		covered = pd.Series(True, index=X.index)
 		for clause in rule:
-			covered['coverage'] &= self.mask(clause, X1)
-		# print(covered['coverage'])
-		return covered['coverage']	
+			covered &= self.mask(clause, X)
+		#print(covered)
+		return covered
 
 	def post_process(self, rule_list):
 		# TODO
@@ -86,23 +88,24 @@ class SequentialCoveringClassifier(BaseEstimator, ClassifierMixin):
 		# X, y = check_X_y(X, y)
 		
 		# Store the classes seen during fit
-		self.classes_ = unique_labels(y)
+		# self.classes_ = unique_labels(y)
 
-		self.X_ = X
-		self.y_ = y
+		# self.X_ = X
+		# self.y_ = y
 
 		# Rule list is initially empty
 		rule_list = []
 
-		X1 = pd.DataFrame(X)
-		y1 = pd.DataFrame(y)['DEFAULT PAYMENT JAN'].apply(lambda x: True if x==1 else False)
+		X = pd.DataFrame(X)
+		y = pd.Series(y).apply(lambda x: x == 1)
 		
-		while (not y1.empty):
+		while (not y.empty):
 			# Find the best rule possible
-			rule = self.find_best_rule(X1, y1)
+			rule = self.find_best_rule(X, y)
 			# Check if we need more rules
 			if len(rule) == 0:
-				print('Stopping, there are {} examples that are going to be predicted using majority class'.format(y1.count()))
+				print('Stopping, there are {} examples that '+
+					'are going to be predicted using majority class'.format(y.count()))
 				print('Rules mined: {}'.format(len(rule_list)))
 				for i in np.arange(0, len(rule_list)):
 					print('Rule {}/{}'.format(i+1,len(rule_list)))
@@ -110,38 +113,36 @@ class SequentialCoveringClassifier(BaseEstimator, ClassifierMixin):
 						self.print_clause(clause)
 				break
 			# Remove covered examples and update the moodel
-			mask = ~self.cover(rule, X1)
-			X1 = X1[mask]
-			y1 = y1[mask]
+			mask = ~self.cover(rule, X)
+			X = X[mask]
+			y = y[mask]
 
 			rule_list.append(rule)
+			# input()
 
 		# Post-process the rules (sort-them, simplify them, etc.)
-		rule_list = self.post_process(rule_list)
-
-		self.rule_list = rule_list
+		self.rule_list = self.post_process(rule_list)
 
 		# Return the classifier
 		return self
 
 	def predict(self, X):
 		# Check is fit had been called
-		check_is_fitted(self, ['X_', 'y_'])
+		# check_is_fitted(self, ['X_', 'y_'])
 
 		# Input validation
-		X = check_array(X)
+		# X = check_array(X)
 
-		def check_rules(x):
-			for rule in rule_list:
-				if (cover(rule, x)):
-					return True
-			return False
+		y_pred = pd.Series(False, index=X.index)
+		for rule in self.rule_list:
+			#print(self.cover(rule, X))
+			y_pred |= self.cover(rule, X)
 
-		y = X.apply(lambda x: check_rules(x))
+		#print(y_pred.sum())
 
-		# y_pred = 
-#
-		return y
+		y_pred.apply(lambda x: 1 if x else 0)
+
+		return y_pred
 
 		# closest = np.argmin(euclidean_distances(X, self.X_), axis=1)
 		# return self.y_[closest]
