@@ -3,7 +3,7 @@ import numpy as np
 from datetime import date
 from sklearn.preprocessing import RobustScaler, MinMaxScaler, StandardScaler
 from sklearn.model_selection import cross_val_score, StratifiedKFold, train_test_split, GridSearchCV
-from sklearn.metrics import make_scorer, confusion_matrix, f1_score, roc_curve, auc
+from sklearn.metrics import make_scorer, accuracy_score, confusion_matrix, f1_score, roc_curve, auc
 from SequentialCoveringClassifier import SequentialCoveringClassifier
 
 r = 666
@@ -57,6 +57,10 @@ X_test = pd.DataFrame(rs.transform(X_test), index = X_test.index, columns = X_te
 add_dataset(X, y, X_test, y_test, 'baseline_scaled')
 
 clf = SequentialCoveringClassifier()
-X, y, X_test, y_test = retrieve_dataset('baseline')
+X, y, X_test, y_test = retrieve_dataset('baseline_scaled')
 # print(y)
 clf.fit(X, y)
+y_pred = clf.predict(X_test)
+print(accuracy_score(y_test, y_pred))
+print(f1_score(y_test, y_pred))
+print(confusion_matrix(y_test, y_pred))
