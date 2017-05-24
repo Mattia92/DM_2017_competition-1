@@ -13,8 +13,8 @@ class SequentialCoveringClassifier(BaseEstimator, ClassifierMixin):
 		print('Rel. Accuracy: {:.2f}, TP: {}, FP: {}, Col: {} -> ({:.2f}, {:.2f}]'.format(
 			clause[0], clause[1], clause[2], clause[3], clause[4], clause[5]))
 
-	def find_best_rule(self, X, y, k=4, min_coverage=100,
-		acc_imp_tresh=0.01, max_clauses=5, min_accuracy=0.3):
+	def find_best_rule(self, X, y, k=8, min_coverage=100,
+		acc_imp_tresh=0.01, max_clauses=8, min_accuracy=0.3):
 		y = pd.Series(y)
 		X = pd.DataFrame(X)
 		rule = []
@@ -29,7 +29,7 @@ class SequentialCoveringClassifier(BaseEstimator, ClassifierMixin):
 				X_col = X[col]
 				lb = X_col.min()
 				ub = X_col.max()
-				#print('col = {}, k = {}, lb = {:.2f}, ub = {:.2f}'.format(col, k, lb, ub))
+				# print('col = {}, k = {}, lb = {:.2f}, ub = {:.2f}'.format(col, k, lb, ub))
 				for i in np.arange(2, k+1):
 					h = (ub - lb) / i
 					# print('h = {:.2f}'.format(h))
@@ -44,11 +44,11 @@ class SequentialCoveringClassifier(BaseEstimator, ClassifierMixin):
 						if (y_masked_count >= min_coverage):
 							y_masked_sum = y_masked.sum()
 							acc = y_masked_sum / y_masked_count
-							if (acc > best_clause[0] + acc_imp_tresh):
+							if ((acc > best_clause[0] + acc_imp_tresh) or (acc > best_clause[0] - acc_imp_tresh and y_masked_sum > best_clause[1])):
 								rule_found = True
 								best_clause = (acc, y_masked_sum, y_masked_count - y_masked_sum, col, base, top)
-								#print('New best clause found!')
-								#self.print_clause(best_clause)
+								# print('New best clause found!')
+								# self.print_clause(best_clause)
 			if (not rule_found):
 				break
 			if (best_clause[0] < min_accuracy):
@@ -80,7 +80,18 @@ class SequentialCoveringClassifier(BaseEstimator, ClassifierMixin):
 		return covered
 
 	def post_process(self, rule_list):
-		# TODO
+		for rule in rule_list:
+			len_rule = len(rule)
+			i = 0
+			while (i < len_rule - 1):
+				j = i + 1
+				while (j < len_rule):
+					# Being futher is more precise, thus remove the previous
+					if (rule[i][3] == rule[j][3]):
+						rule.remove(rule[i])
+						len_rule -= 1
+					j += 1
+				i += 1
 		return rule_list
 
 	def fit(self, X, y):
@@ -104,13 +115,7 @@ class SequentialCoveringClassifier(BaseEstimator, ClassifierMixin):
 			rule = self.find_best_rule(X, y)
 			# Check if we need more rules
 			if len(rule) == 0:
-				print('Stopping, there are {} examples that '+
-					'are going to be predicted using majority class'.format(y.count()))
-				print('Rules mined: {}'.format(len(rule_list)))
-				for i in np.arange(0, len(rule_list)):
-					print('Rule {}/{}'.format(i+1,len(rule_list)))
-					for clause in rule_list[i]:
-						self.print_clause(clause)
+				print('Stopping, there are {} examples that are going to be predicted using majority class'.format(y.count()))
 				break
 			# Remove covered examples and update the moodel
 			mask = ~self.cover(rule, X)
@@ -122,6 +127,12 @@ class SequentialCoveringClassifier(BaseEstimator, ClassifierMixin):
 
 		# Post-process the rules (sort-them, simplify them, etc.)
 		self.rule_list = self.post_process(rule_list)
+
+		print('Rules mined: {}'.format(len(rule_list)))
+		for i in np.arange(0, len(rule_list)):
+			print('Rule {}/{}'.format(i+1,len(rule_list)))
+			for clause in rule_list[i]:
+				self.print_clause(clause)
 
 		# Return the classifier
 		return self
