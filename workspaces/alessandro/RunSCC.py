@@ -15,13 +15,9 @@ orig_dataset = dataset.copy()
 
 print(orig_dataset.shape)
 
-# Format: {'name' : X_name}
 X_dict = {}
-# Format: {'name' : y_name}
 y_dict = {}
-# Format: {'name' : X_test_name}
 X_test_dict = {}
-# Format: {'name' : y_test_name}
 y_test_dict = {}
 
 names = set()
@@ -47,20 +43,55 @@ def add_dataset(X, y, X_test, y_test, name):
 def retrieve_dataset(name):
     return (X_dict[name], y_dict[name], X_test_dict[name], y_test_dict[name])
 
-split_and_add(dataset=orig_dataset, name='orig')
-split_and_add(dataset=orig_dataset.drop(['SEX', 'EDUCATION', 'MARRIAGE', 'BIRTH_DATE'], 1), name='baseline')
-X, y, X_test, y_test = retrieve_dataset('baseline')
-rs = RobustScaler()
-rs.fit(X)
-X = pd.DataFrame(rs.transform(X), index = X.index, columns = X.columns)
-X_test = pd.DataFrame(rs.transform(X_test), index = X_test.index, columns = X_test.columns)
-add_dataset(X, y, X_test, y_test, 'baseline_scaled')
+
+orig_dataset = orig_dataset.drop(['SEX', 'EDUCATION', 'MARRIAGE', 'BIRTH_DATE'], 1)
+
+#orig_dataset['PAY_DEC_MINUS_NOV'] = orig_dataset['PAY_DEC'] - orig_dataset['PAY_NOV']
+#orig_dataset['PAY_AMT_DEC_OVER_LIMIT_BAL'] = orig_dataset['PAY_AMT_DEC'] / orig_dataset['LIMIT_BAL']
+#orig_dataset['PAY_AMT_DEC_MINUS_LIMIT_BAL'] = orig_dataset['PAY_AMT_DEC'] - orig_dataset['LIMIT_BAL']
+#orig_dataset['PAY_AMT_DEC_MINUS_PAY_AMT_NOV'] = orig_dataset['PAY_AMT_DEC'] - orig_dataset['PAY_AMT_NOV']
+#orig_dataset['PIPPO2'] = orig_dataset['PAY_DEC'] * orig_dataset['PAY_AMT_DEC']
+#orig_dataset['PIPPO'] = orig_dataset['PAY_AMT_DEC'] - orig_dataset['BILL_AMT_NOV']
+
+split_and_add(dataset=orig_dataset.drop([
+    #'SEX', 'EDUCATION', 'MARRIAGE', 'BIRTH_DATE',
+    'BILL_AMT_DEC',
+    'BILL_AMT_NOV',
+    'BILL_AMT_OCT', 'BILL_AMT_SEP', 'BILL_AMT_AUG', 'BILL_AMT_JUL',
+    #'PAY_DEC',
+    'PAY_NOV',
+    'PAY_OCT',
+    'PAY_SEP', 'PAY_AUG',
+    'PAY_JUL',
+    'PAY_AMT_DEC',
+    'LIMIT_BAL',
+    'PAY_AMT_NOV', 
+    'PAY_AMT_OCT', 'PAY_AMT_SEP', 'PAY_AMT_AUG', 'PAY_AMT_JUL'
+    ], 1), name='baseline')
 
 clf = SequentialCoveringClassifier()
-X, y, X_test, y_test = retrieve_dataset('baseline_scaled')
+X, y, X_test, y_test = retrieve_dataset('baseline')
 # print(y)
+#import sys
+#import os
+#sys.stdout = open(os.devnull, "w")
 clf.fit(X, y)
+
+def bad_good(y_true, y_pred):
+    cm = confusion_matrix(y_true, y_pred)
+    print('{:.2f}% BAD customer predicted as GOOD customer'.format(cm[1][0] / (cm[1][0]+cm[1][1])))
+    print('{:.2f}% GOOD customer predicted as BAD customer'.format(cm[0][1] / (cm[0][0]+cm[0][1])))
+
+y_pred = clf.predict(X)
+#sys.stdout = sys.__stdout__
+bad_good(y, y_pred)
+print(accuracy_score(y, y_pred))
+print(f1_score(y, y_pred))
+print(confusion_matrix(y, y_pred))
+
 y_pred = clf.predict(X_test)
+#sys.stdout = sys.__stdout__
+bad_good(y_test, y_pred)
 print(accuracy_score(y_test, y_pred))
 print(f1_score(y_test, y_pred))
 print(confusion_matrix(y_test, y_pred))
