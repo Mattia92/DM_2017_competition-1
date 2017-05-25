@@ -14,7 +14,7 @@ class SequentialCoveringClassifier(BaseEstimator, ClassifierMixin):
 			clause[0], clause[1], clause[2], clause[3], clause[4], clause[5]))
 
 	def find_best_rule(self, X, y, k=8, min_coverage=100,
-		acc_imp_tresh=0.01, max_clauses=8, min_accuracy=0.3):
+		acc_imp_tresh=0.01, max_clauses=8, min_accuracy=0.23):
 		y = pd.Series(y)
 		X = pd.DataFrame(X)
 		rule = []
