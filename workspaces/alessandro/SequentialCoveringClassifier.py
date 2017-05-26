@@ -10,11 +10,11 @@ class SequentialCoveringClassifier(BaseEstimator, ClassifierMixin):
 		self.demo_param = demo_param
 
 	def print_clause(self, clause):
-		print('Rel. Accuracy: {:.2f}, TP: {}, FP: {}, Col: {} -> ({:.2f}, {:.2f}]'.format(
+		print('Acc: {:.2f}, TP: {}, FP: {}, Col: {} -> ({:.2f}, {:.2f}]'.format(
 			clause[0], clause[1], clause[2], clause[3], clause[4], clause[5]))
 
-	def find_best_rule(self, X, y, k=8, min_coverage=100,
-		acc_imp_tresh=0.01, max_clauses=8, min_accuracy=0.23):
+	def find_best_rule(self, X, y, min_coverage=50,
+		acc_imp_tresh=0.01, max_clauses=8, min_accuracy=0.2, max_diff=100):
 		y = pd.Series(y)
 		X = pd.DataFrame(X)
 		rule = []
@@ -26,29 +26,25 @@ class SequentialCoveringClassifier(BaseEstimator, ClassifierMixin):
 			y_count = y.count()
 			rule_found = False
 			for col in X.columns:
-				X_col = X[col]
-				lb = X_col.min()
-				ub = X_col.max()
-				# print('col = {}, k = {}, lb = {:.2f}, ub = {:.2f}'.format(col, k, lb, ub))
-				for i in np.arange(2, k+1):
-					h = (ub - lb) / i
-					# print('h = {:.2f}'.format(h))
-					for j in np.arange(0, i):
-						base = lb + j * h
-						top = base + h
-						# print('base = {:.2f}, top = {:.2f}'.format(base, top))
-						mask = (X_col > base) & (X_col <= top)
-						# X2 = X1_col[mask]
+				X_col = pd.Series(X[col])
+				X_col_vals_sorted = sorted(list(X_col.unique()))
+				for lb_idx in np.arange(0, len(X_col_vals_sorted) - 1):
+					lb = X_col_vals_sorted[lb_idx]
+					for ub_idx in np.arange(lb_idx + 1, len(X_col_vals_sorted)):
+						ub = X_col_vals_sorted[ub_idx]
+						mask = (X_col >= lb) & (X_col < ub)
 						y_masked = y[mask]
-						y_masked_count = y_masked.count()
-						if (y_masked_count >= min_coverage):
-							y_masked_sum = y_masked.sum()
-							acc = y_masked_sum / y_masked_count
-							if ((acc > best_clause[0] + acc_imp_tresh) or (acc > best_clause[0] - acc_imp_tresh and y_masked_sum > best_clause[1])):
-								rule_found = True
-								best_clause = (acc, y_masked_sum, y_masked_count - y_masked_sum, col, base, top)
-								# print('New best clause found!')
-								# self.print_clause(best_clause)
+						TP = y_masked.sum()
+						TP_PLUS_FP = y_masked.count()
+						FP = TP_PLUS_FP - TP
+						# print('{} in [{:.2f}, {:.2f})'.format(col, lb, ub))
+						accuracy = TP / TP_PLUS_FP
+						if ((TP_PLUS_FP >= min_coverage) and
+							(accuracy >= best_clause[0] + acc_imp_tresh)):
+							rule_found = True
+							best_clause = (accuracy, TP, FP, col, lb, ub)
+							print('New best clause found!')
+							self.print_clause(best_clause)
 			if (not rule_found):
 				break
 			if (best_clause[0] < min_accuracy):
@@ -70,7 +66,7 @@ class SequentialCoveringClassifier(BaseEstimator, ClassifierMixin):
 		return rule
 
 	def mask(self, clause, X):
-		return (X[clause[3]] > clause[4]) & (X[clause[3]] <= clause[5])
+		return (X[clause[3]] >= clause[4]) & (X[clause[3]] < clause[5])
 
 	def cover(self, rule, X):
 		covered = pd.Series(True, index=X.index)
@@ -108,6 +104,12 @@ class SequentialCoveringClassifier(BaseEstimator, ClassifierMixin):
 		rule_list = []
 
 		X = pd.DataFrame(X)
+
+		for col in X.columns:
+			if (len(sorted(list(X[col].unique()))) >= 20): # 100 * 100 == 100000
+				print('Binning {}'.format(col))
+				X[col] = pd.qcut(X[col], [0, .125, .25, .375, .5, .675, .75, .825, 1], duplicates='drop').apply(lambda x: x.right)
+
 		y = pd.Series(y).apply(lambda x: x == 1)
 		
 		while (not y.empty):
